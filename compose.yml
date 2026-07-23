@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sparkjoy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sparkjoy}
+      POSTGRES_DB: ${POSTGRES_DB:-sparkjoy}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-sparkjoy} -d ${POSTGRES_DB:-sparkjoy}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sparkjoy}:${POSTGRES_PASSWORD:-sparkjoy}@db:5432/${POSTGRES_DB:-sparkjoy}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      SEED_FILE: /app/posts.json
+      SEED_USER_EMAIL: ${SEED_USER_EMAIL:-admin@example.com}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-Password123!}
+      PORT: 4000
+    volumes:
+      # mounted (not baked into the image) so swapping posts.json needs no rebuild
+      - ./posts.json:/app/posts.json:ro
+    ports:
+      - '4000:4000'
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # rewrites are baked at build time — this must point at the backend service
+        API_URL: http://backend:4000
+    depends_on:
+      - backend
+    ports:
+      - '3000:3000'
+
+volumes:
+  pgdata:
