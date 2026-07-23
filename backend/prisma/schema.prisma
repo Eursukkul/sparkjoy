@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int    @id @default(autoincrement())
+  email        String @unique
+  passwordHash String
+  name         String
+}
+
+// Post PK is a UUID v7 generated at seed time (source data has no id).
+// UUID v7 is time-ordered: better index locality than v4, non-enumerable unlike serial.
+model Post {
+  id       String    @id
+  title    String
+  content  String // sanitized HTML (cleaned at ingest, safe to render as-is)
+  excerpt  String // plain-text preview (~200 chars) for the list endpoint
+  postedAt DateTime
+  postedBy String
+  tags     PostTag[]
+
+  @@index([postedAt(sort: Desc)])
+}
+
+model Tag {
+  id    Int       @id @default(autoincrement())
+  name  String    @unique
+  posts PostTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  Int
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+}
