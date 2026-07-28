@@ -44,11 +44,13 @@ function PostsPage() {
 
   const postsQuery = useQuery({
     queryKey: ['posts', { page, tag, search }],
-    queryFn: () => {
+    // signal → typing fast or paging quickly aborts the superseded request
+    // instead of leaving it in flight for a result nobody reads.
+    queryFn: ({ signal }) => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (tag) params.set('tag', tag);
       if (search) params.set('search', search);
-      return api<PostListResponse>(`/posts?${params}`);
+      return api<PostListResponse>(`/posts?${params}`, { signal });
     },
     placeholderData: (previous) => previous, // keep the old page visible while the next loads
   });

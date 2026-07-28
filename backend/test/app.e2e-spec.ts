@@ -157,6 +157,23 @@ describe('API (e2e)', () => {
       }
     });
 
+    it('treats LIKE metacharacters as literals, not wildcards', async () => {
+      const all = await request(server).get('/posts?limit=1').set('Cookie', cookie).expect(200);
+      const total = (all.body as PostList).meta.total;
+
+      // Unescaped, `_` matches any single char and `%` any sequence — either
+      // would return the whole table instead of literal matches.
+      for (const char of ['_', '%']) {
+        const res = await request(server)
+          .get(`/posts?search=${encodeURIComponent(char)}`)
+          .set('Cookie', cookie)
+          .expect(200);
+        const body = res.body as PostList;
+        expect(body.meta.total).toBeLessThan(total);
+        for (const post of body.items) expect(post.title).toContain(char);
+      }
+    });
+
     it('rejects invalid pagination params with 400', async () => {
       await request(server).get('/posts?page=abc').set('Cookie', cookie).expect(400);
       await request(server).get('/posts?limit=999').set('Cookie', cookie).expect(400);

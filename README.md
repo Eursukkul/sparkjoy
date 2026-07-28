@@ -122,7 +122,7 @@ Errors follow NestJS's standard shape: `{ statusCode, message, error }` — `400
 
 ## Testing
 
-Integration tests (Jest + Supertest) boot the real Nest app — same guards, pipes and Prisma wiring as production (shared `configureApp()`) — against a disposable Postgres. 17 tests cover auth (cookie flags, tampered token, no user enumeration), posts (pagination, sorting, tag filter, search, validation, 404), sanitization (no XSS vectors in stored content), tags, and rate limiting. Assertions are data-agnostic: they pass with any `posts.json`, not just the sample.
+Integration tests (Jest + Supertest) boot the real Nest app — same guards, pipes and Prisma wiring as production (shared `configureApp()`) — against a disposable Postgres. 18 tests cover auth (cookie flags, tampered token, no user enumeration), posts (pagination, sorting, tag filter, search including LIKE-metacharacter escaping, validation, 404), sanitization (no XSS vectors in stored content), tags, and rate limiting. Assertions are data-agnostic: they pass with any `posts.json`, not just the sample.
 
 ```bash
 # one-time: disposable test database on :5433
@@ -161,7 +161,7 @@ docker stop sparkjoy-test-db   # cleanup
 
 ## Extras Implemented
 
-- Integration test suite — 17 tests against the real app + real Postgres (see Testing)
+- Integration test suite — 18 tests against the real app + real Postgres (see Testing)
 - Pagination + title search (debounced) + tag filter, all URL-driven (back button / refresh / shareable links work)
 - Loading skeletons, error states with retry, empty states
 - Swagger/OpenAPI docs at `/docs`

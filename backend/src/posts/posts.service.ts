@@ -3,6 +3,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PostsQueryDto } from './dto/posts-query.dto';
 
+// `contains` becomes an ILIKE pattern, so `%` and `_` from user input would act
+// as wildcards (`?search=_` matches every row). Backslash is Postgres' default
+// LIKE escape character, so escaping here needs no ESCAPE clause.
+const escapeLikePattern = (value: string): string => value.replace(/[\\%_]/g, '\\$&');
+
 @Injectable()
 export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -10,7 +15,7 @@ export class PostsService {
   async findAll({ page, limit, tag, search }: PostsQueryDto) {
     const where: Prisma.PostWhereInput = {
       ...(tag ? { tags: { some: { tag: { name: tag } } } } : {}),
-      ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
+      ...(search ? { title: { contains: escapeLikePattern(search), mode: 'insensitive' } } : {}),
     };
 
     // Single transaction so items and total agree with each other.
