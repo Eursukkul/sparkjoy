@@ -113,7 +113,7 @@ All endpoints except `POST /auth/login` and `GET /health` require the auth cooki
 | POST | `/auth/login` | `{ email, password }` → sets `access_token` httpOnly cookie. Rate-limited to 5/min per IP |
 | POST | `/auth/logout` | Clears the cookie |
 | GET | `/auth/me` | Current user from the JWT |
-| GET | `/posts?page&limit&tag&search` | Paginated list (default 20, max 100). `tag` = exact tag name, `search` = case-insensitive title match. Returns excerpts, not full content |
+| GET | `/posts?page&limit&tag&search` | Paginated list (default 20, max 100). `tag` = exact tag name, `search` = case-insensitive title match (LIKE metacharacters are escaped, so `%` and `_` match literally). Returns excerpts, not full content |
 | GET | `/posts/:id` | Full post incl. sanitized HTML `content` |
 | GET | `/tags` | All tags with post counts (drives the filter UI) |
 | GET | `/health` | Liveness + DB connectivity |
@@ -145,7 +145,7 @@ docker stop sparkjoy-test-db   # cleanup
 
 **Primary key — UUID v7.** The source data has no `id`. UUID v7 is time-ordered (good B-tree index locality, unlike random v4) and non-enumerable (unlike serial integers, IDs don't leak row counts or allow URL guessing). Generated in the seeder since Postgres 16 has no native v7.
 
-**Tags — normalized many-to-many.** `Tag` + `PostTag` join table with a composite PK `(postId, tagId)` and an index on `tagId`. Tag filtering uses an indexed join instead of scanning an array column, and `GET /tags` (with counts) falls out of the model naturally.
+**Tags — normalized many-to-many.** `Tag` + `PostTag` join table with a composite PK `(postId, tagId)` and an index on `tagId`. Filtering by tag resolves to an indexed lookup on the join table rather than a scan of an array column — Prisma's `some` compiles to a correlated `EXISTS` subquery, which plans as a bitmap index scan on `PostTag_tagId_idx` — and `GET /tags` (with counts) falls out of the model naturally.
 
 **`postedBy` — plain string column.** No requirement filters or joins on author, so normalizing authors into their own table would be speculative. If author profiles/filtering arrive later, it's a straightforward migration.
 
@@ -183,3 +183,5 @@ docker stop sparkjoy-test-db   # cleanup
 - `API_URL` for the frontend is baked at image build time (Next rewrites are resolved during `next build`) — changing the backend address requires an image rebuild.
 - The auth cookie is not `Secure` by default so the stack works over plain `http://localhost`; set `COOKIE_SECURE=true` behind HTTPS.
 - Tag filter accepts a single tag (matching the requirement); multi-tag AND/OR filtering would extend the same query shape.
+- Title search uses `ILIKE '%term%'`, whose leading wildcard cannot use an index as a predicate. At this scale the first page still costs ~1ms (Postgres walks the `postedAt` index and stops after 20 rows), but the accompanying `count(*)` sequentially scans on every request (~8ms/9.8k rows). Caching or estimating the total — or moving to cursor pagination, which needs no count — would pay off before `pg_trgm`/`tsvector` does.
+- Tag-filtered lists must sort after filtering: the indexes on `Post(postedAt)` and `PostTag(tagId)` are separate, so no single index covers both. A composite index would require denormalizing `postedAt` into `PostTag`.
