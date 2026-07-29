@@ -42,6 +42,13 @@ function PostsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
+  // URL → input, for changes the input didn't cause (back/forward, shared link).
+  // Without this the box keeps the text you typed while the results show the
+  // previous query. The guard above stops the two effects from ping-ponging.
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
   const postsQuery = useQuery({
     queryKey: ['posts', { page, tag, search }],
     // signal → typing fast or paging quickly aborts the superseded request
