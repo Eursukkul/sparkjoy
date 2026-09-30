@@ -1,0 +1,32 @@
+# Run with: docker compose -f compose.yml -f compose.go.yml up --build
+# NestJS remains available on :4000 and owns migrations/seeding.
+services:
+  backend:
+    # Nest starts listening only after its migration and seed have completed.
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:4000/health >/dev/null']
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  backend-go:
+    build: ./backend-go
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sparkjoy}:${POSTGRES_PASSWORD:-sparkjoy}@db:5432/${POSTGRES_DB:-sparkjoy}
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      GIN_MODE: release
+      PORT: 4001
+    ports:
+      - '4001:4001'
+
+  frontend:
+    build:
+      args:
+        API_URL: http://backend-go:4001
+    depends_on:
+      - backend-go

@@ -7,8 +7,8 @@ A small posts-browsing application: users log in, browse ~10,000 seeded posts, v
 | Layer | Choice | Why |
 |---|---|---|
 | Database | PostgreSQL 16 | Relational fit for the posts↔tags many-to-many; standard tooling, easy Docker setup |
-| Backend | NestJS 11 (Node.js) | Structured modules/DI/guards/pipes out of the box; validation and OpenAPI come nearly free |
-| ORM | Prisma 6 | Whole data model readable in one schema file; committed SQL migrations; `createMany` for efficient bulk seeding |
+| Backend | NestJS 11 (default), Gin + GORM (optional) | NestJS remains the default; the Go API implements the same frontend-facing routes |
+| Data access | Prisma 6 (NestJS), GORM (Go) | Both use the same PostgreSQL schema; Prisma owns migrations and seeding |
 | Frontend | Next.js 15 (App Router) + TanStack Query | Assignment requires Next or Nuxt; TanStack Query gives caching, loading/error states declaratively |
 | Styling | Tailwind CSS 4 (+ typography plugin) | Fast to build a clean, responsive UI; `prose` styles the post HTML content |
 | Auth | JWT in an httpOnly cookie | See [Design decisions](#design-decisions) |
@@ -27,6 +27,13 @@ A small posts-browsing application: users log in, browse ~10,000 seeded posts, v
 │       ├── health/       # liveness + DB check
 │       ├── seed/         # idempotent seeder (auto-runs on startup)
 │       └── prisma/       # PrismaService (connection lifecycle)
+├── backend-go/            # optional Gin + GORM API over the same PostgreSQL data
+│   ├── cmd/api/           # composition root and server startup
+│   └── internal/
+│       ├── domain/        # post, tag, and user models
+│       ├── application/   # use cases and repository/token interfaces
+│       ├── infrastructure/ # GORM/PostgreSQL, JWT, bcrypt implementations
+│       └── transport/http/ # Gin routes, request validation, cookies
 └── frontend/
     └── src/
         ├── middleware.ts # cookie-presence redirect (/login ↔ /)
@@ -49,6 +56,20 @@ docker compose up --build
 | Swagger docs | http://localhost:4000/docs |
 | Health check | http://localhost:4000/health |
 | PostgreSQL | internal only (add a `ports` mapping to `db` if you need psql access) |
+
+### Use the Go backend
+
+The NestJS backend stays intact on port 4000 and owns the existing Prisma migration and idempotent seed. The optional Gin + GORM API reads the same database on port 4001. The Compose override points the frontend at Go without changing frontend code:
+
+```bash
+docker compose -f compose.yml -f compose.go.yml up --build
+```
+
+Open the frontend at http://localhost:3000 and use the same test account. `GET /health`, login/logout/me, posts list/detail, and tags are implemented in Go. The Go API returns the same response shapes and uses the same JWT secret and cookie name. Swagger remains on the NestJS API at http://localhost:4000/docs; Go does not serve `/docs`.
+
+For local Go development, start and seed the NestJS backend first, set the variables shown in `backend-go/.env.example`, then run `cd backend-go && go run ./cmd/api`. The Go server waits for seeded posts before serving requests.
+
+Set `TRUSTED_PROXIES` only to the exact proxy IP/CIDR when that proxy forwards the original client IP. The default trusts no forwarded headers. With the current Next.js rewrite, rate limits are keyed by the frontend container's IP.
 
 **Test account** (created automatically by the seed):
 
@@ -121,6 +142,14 @@ All endpoints except `POST /auth/login` and `GET /health` require the auth cooki
 Errors follow NestJS's standard shape: `{ statusCode, message, error }` — `400` validation, `401` unauthenticated, `404` unknown post, `429` rate-limited.
 
 ## Testing
+
+Go unit tests and static checks:
+
+```bash
+cd backend-go
+go test ./...
+go vet ./...
+```
 
 Integration tests (Jest + Supertest) boot the real Nest app — same guards, pipes and Prisma wiring as production (shared `configureApp()`) — against a disposable Postgres. 18 tests cover auth (cookie flags, tampered token, no user enumeration), posts (pagination, sorting, tag filter, search including LIKE-metacharacter escaping, validation, 404), sanitization (no XSS vectors in stored content), tags, and rate limiting. Assertions are data-agnostic: they pass with any `posts.json`, not just the sample.
 
